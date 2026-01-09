@@ -2,14 +2,19 @@ import { error } from '@sveltejs/kit'
 
 import { getRequestEvent } from '$app/server'
 
-export function createApiClient(
-    options: {
-        base: string
-        prepareRequest?: (init: RequestInit) => void
-    } = {
+export type ApiClientOptions = {
+    base?: string
+    prepareRequest?: (init: RequestInit) => void
+    throwOn?: Array<number>
+}
+
+export function createApiClient(clientOptions: ApiClientOptions = {}) {
+    const options = {
         base: '',
+        throwOn: [],
+        ...clientOptions,
     }
-) {
+
     return async (path: string, init: RequestInit = {}): Promise<unknown> => {
         options.prepareRequest?.(init)
 
@@ -17,14 +22,16 @@ export function createApiClient(
 
         const response = await fetch(`${options.base}${path}`, init)
 
-        if (response.ok) {
-            if (response.status === 204 || response.status === 205) {
-                return null
-            }
-        } else {
-            if (!(400 <= response.status && response.status <= 499)) {
-                error(response.status)
-            }
+        if (response.status >= 500) {
+            error(response.status)
+        }
+
+        if (options.throwOn.includes(response.status)) {
+            error(response.status)
+        }
+
+        if (response.status === 204 || response.status === 205) {
+            return null
         }
 
         return await response.json()

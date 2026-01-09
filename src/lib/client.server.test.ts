@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createApiClient } from './client.server'
+import { createApiClient, type ApiClientOptions } from './client.server'
 
 vi.mock('@sveltejs/kit', () => ({
     error: (status: number) => {
@@ -111,5 +111,80 @@ describe('createApiClient', () => {
             body: JSON.stringify({ name: 'John' }),
         })
         expect(result).toEqual(mockResponse)
+    })
+
+    it('should return null for 204 No Content response', async () => {
+        const apiClient = createApiClient({ base: 'https://api.example.com' })
+
+        mockFetch.mockResolvedValue({
+            ok: true,
+            status: 204,
+        })
+
+        const result = await apiClient('/users/1', { method: 'DELETE' })
+
+        expect(result).toBeNull()
+    })
+
+    it('should return null for 205 Reset Content response', async () => {
+        const apiClient = createApiClient({ base: 'https://api.example.com' })
+
+        mockFetch.mockResolvedValue({
+            ok: true,
+            status: 205,
+        })
+
+        const result = await apiClient('/form')
+
+        expect(result).toBeNull()
+    })
+
+    it('should throw error for status codes in throwOn array', async () => {
+        const apiClient = createApiClient({
+            base: 'https://api.example.com',
+            throwOn: [404, 403],
+        })
+
+        mockFetch.mockResolvedValue({
+            ok: false,
+            status: 404,
+            json: async () => ({ error: 'Not found' }),
+        })
+
+        await expect(apiClient('/users/999')).rejects.toThrow('SvelteKit error: 404')
+    })
+
+    it('should not throw for status codes not in throwOn array', async () => {
+        const apiClient = createApiClient({
+            base: 'https://api.example.com',
+            throwOn: [403],
+        })
+        const errorData = { error: 'Not found' }
+
+        mockFetch.mockResolvedValue({
+            ok: false,
+            status: 404,
+            json: async () => errorData,
+        })
+
+        const result = await apiClient('/users/999')
+
+        expect(result).toEqual(errorData)
+    })
+
+    it('should work with empty base URL', async () => {
+        const apiClient = createApiClient()
+        const mockData = { id: 1 }
+
+        mockFetch.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => mockData,
+        })
+
+        const result = await apiClient('/api/users')
+
+        expect(mockFetch).toHaveBeenCalledWith('/api/users', {})
+        expect(result).toEqual(mockData)
     })
 })
