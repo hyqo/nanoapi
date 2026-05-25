@@ -92,3 +92,7 @@ export async function autoDetect<T>(response: Response): Promise<T> {
     const text = await response.text()
     return (text.length ? text : null) as T
 }
+
+const client = nanoapi()
+
+const response = await client('/') as number

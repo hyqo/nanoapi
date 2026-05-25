@@ -1,3 +1,3 @@
-export * from './client'
-export * from './middlewares'
-export * from './helpers'
+export * from './client.ts'
+export * from './middlewares.ts'
+export * from './helpers.ts'
