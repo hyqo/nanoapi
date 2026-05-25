@@ -1,3 +1,7 @@
+type Fetch = typeof fetch
+export type FetchInput = Parameters<Fetch>[0]
+export type FetchInit = Parameters<Fetch>[1]
+
 export type Success<T extends object = object> = Promise<{ ok: true } & T>
 export type Failure<T extends object = object> = Promise<{ ok: false } & T>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { withQuery, withBody, withMethod } from './helpers'
+import { withQuery, withBody, withMethod } from './helpers.ts'
 
 describe('withQuery', () => {
     it('should return empty string for undefined or empty object', () => {

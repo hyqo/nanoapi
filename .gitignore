@@ -1,11 +1,12 @@
 node_modules
 
+.yarn/install-state.gz
+
 # Output
 .output
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
 /build
 /dist
 
