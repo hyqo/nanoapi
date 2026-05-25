@@ -1,14 +1,6 @@
 # @hyqo/nanoapi
 
-A lightweight, type-safe API client for SvelteKit applications that leverages native SvelteKit features.
-
-## Features
-
-- **SvelteKit-native**: Uses SvelteKit's `fetch` and `error` handling
-- **Type-safe**: TypeScript support with `Success` and `Failure` types
-- **Lightweight**: Minimal dependencies
-- **Flexible**: Configurable base URL and request options
-- **Helper utilities**: Built-in query params, body, and method helpers
+Lightweight fetch wrapper with middleware support and auto response detection.
 
 ## Installation
 
@@ -18,144 +10,145 @@ npm install @hyqo/nanoapi
 
 ## Usage
 
-### Creating an API client
+```ts
+import { nanoapi, withBaseUrl, withAuth, withContentType } from '@hyqo/nanoapi'
 
-```typescript
-// src/lib/api.server.ts
-import { createApiClient } from '@hyqo/nanoapi'
-
-export const api = createApiClient({
-    base: 'https://api.example.com',
-    prepareRequest: init => {
-        // Add default headers, authentication, etc.
-        init.headers = {
-            ...init.headers,
-            Authorization: 'Bearer token',
-        }
-    },
+const api = nanoapi({
+    middlewares: [
+        withBaseUrl('https://api.example.com'),
+        withAuth(() => localStorage.getItem('token') ?? ''),
+        withContentType('application/json'),
+    ],
 })
+
+// Auto-detects response type (JSON, text, blob)
+const user = await api.get('/users/1')
+
+// Explicit response type
+const text = await api.get('/hello').asText()
+const blob = await api.get('/image').asBlob()
+const res  = await api.get('/users').response()
 ```
 
-### Making requests
+## API
 
-```typescript
-// +page.server.ts
-import { api } from '$lib/api.server'
-import { withQuery, withMethod, withBody } from '@hyqo/nanoapi'
+### `nanoapi(options?)`
 
-export async function load() {
-    // GET request
-    const users = await api('/users', withMethod('GET'))
+```ts
+nanoapi({ middlewares?: Middleware[] }): ApiClient
+```
 
-    // GET with query parameters
-    const filteredUsers = await api(`/users${withQuery({ role: 'admin', active: true })}`, withMethod('GET'))
+Returns a callable client with method shortcuts:
 
-    return { users, filteredUsers }
+```ts
+api('/path', init?)          // raw fetch
+api.get('/path', init?)
+api.post('/path', init?)
+api.put('/path', init?)
+api.patch('/path', init?)
+api.delete('/path', init?)
+```
+
+Each call returns an `ApiCall<T>`:
+
+| Method | Description |
+|---|---|
+| `await api(...)` | auto-detects response type |
+| `.asJson()` | parse as JSON |
+| `.asText()` | parse as text |
+| `.asBlob()` | parse as Blob |
+| `.asArrayBuffer()` | parse as ArrayBuffer |
+| `.response()` | raw `Response` object |
+
+### Auto-detection rules
+
+| Condition | Result |
+|---|---|
+| Status 204 / 304 | `null` |
+| `content-length: 0` | `null` |
+| `application/json` | `response.json()` |
+| `text/*` | `response.text()` |
+| `image/*`, `audio/*`, `video/*`, `application/octet-stream` | `response.blob()` |
+| anything else | `response.text()` or `null` if empty |
+
+## Middlewares
+
+Middlewares wrap fetch in order — the first middleware in the array is outermost.
+
+```ts
+type Middleware = (next: typeof fetch) => typeof fetch
+```
+
+### Built-in middlewares
+
+#### `withBaseUrl(baseUrl)`
+
+Prepends `baseUrl` to paths starting with `/`.
+
+```ts
+withBaseUrl('https://api.example.com')
+// api.get('/users') → fetch('https://api.example.com/users')
+```
+
+#### `withAuth(getToken)`
+
+Adds `Authorization: Bearer <token>` header. Calls `getToken` on every request.
+
+```ts
+withAuth(() => myStore.token)
+```
+
+#### `withContentType(contentType, replace?)`
+
+Sets `content-type` header. Pass `replace: false` to skip if already set.
+
+```ts
+withContentType('application/json')
+withContentType('application/json', false)
+```
+
+#### `withTimeout(milliseconds)`
+
+Adds an `AbortSignal` timeout. Combines with any existing signal.
+
+```ts
+withTimeout(5000)
+```
+
+### Custom middleware
+
+```ts
+const withLogger: Middleware = next => (input, init) => {
+    console.log(input)
+    return next(input, init)
 }
-
-export const actions = {
-    create: async ({ request }) => {
-        const data = await request.formData()
-
-        // POST request with JSON body
-        const result = await api('/users', {
-            ...withBody('POST'),
-            body: JSON.stringify({
-                name: data.get('name'),
-                email: data.get('email'),
-            }),
-        })
-
-        return result
-    },
-}
 ```
 
-## API Reference
+## Helpers
 
-### `createApiClient(options)`
+#### `withQuery(params?)`
 
-Creates a new API client instance.
+Converts an object to a query string.
 
-**Parameters:**
-
-- `options.base` (string): Base URL for all requests (defaults to empty string)
-- `options.prepareRequest` (function, optional): Function to modify `RequestInit` before each request
-
-**Returns:** An async function `(path: string, init?: RequestInit) => Promise<unknown>`
-
-### Helper Functions
-
-#### `withQuery(query)`
-
-Converts an object to URL query parameters.
-
-```typescript
-withQuery({ search: 'test', page: 1 })
-// Returns: "?search=test&page=1"
+```ts
+'/users' + withQuery({ role: 'admin', page: 2 })
+// → '/users?role=admin&page=2'
 ```
-
-#### `withBody(method, contentType)`
-
-Creates `RequestInit` object for requests with body.
-
-```typescript
-withBody('POST', 'application/json')
-// Returns: { method: 'POST', headers: { 'Content-Type': 'application/json' } }
-```
-
-Default: `method = 'POST'`, `contentType = 'application/json'`
 
 #### `withMethod(method)`
 
-Creates `RequestInit` object with HTTP method.
+Returns `{ method }` as `RequestInit`.
 
-```typescript
-withMethod('GET')
-// Returns: { method: 'GET' }
+#### `withBody(method?, contentType?)`
+
+Returns `RequestInit` with method and `Content-Type` header.
+
+```ts
+withBody('POST', 'application/json')
+// → { method: 'POST', headers: { 'Content-Type': 'application/json' } }
 ```
 
-### Types
-
-```typescript
-type Success<T extends object = {}> = Promise<{ ok: true } & T>
-type Failure<T extends object = {}> = Promise<{ ok: false } & T>
-```
-
-Use these types for type-safe API responses:
-
-```typescript
-async function getUser(id: string): Success<{ user: User }> | Failure<{ error: string }> {
-    // ...
-}
-```
-
-## Error Handling
-
-The client automatically handles HTTP errors:
-
-- **2xx**: Returns parsed JSON
-- **4xx**: Returns parsed JSON (client errors)
-- **5xx**: Throws SvelteKit error using `error(status)`
-
-## Development
-
-```sh
-npm install
-npm run dev
-```
-
-## Building
-
-```sh
-npm run build
-```
-
-## Testing
-
-```sh
-npm test
-```
+Defaults: `method = 'POST'`, `contentType = 'application/json'`.
 
 ## License
 
